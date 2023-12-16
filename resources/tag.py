@@ -5,8 +5,8 @@ from flask import jsonify, request
 from flask.views import MethodView;
 from flask_smorest import Blueprint,abort
 from db import db
-from schemas import PlainTagSchema, StoreSchema, TagSchema
-from models import TagModel,StoreModel
+from schemas import PlainTagSchema, StoreSchema, TagSchema,TagAndItemSchema
+from models import TagModel,StoreModel,ItemModel
 from sqlalchemy.exc import SQLAlchemyError,IntegrityError
 
 
@@ -47,3 +47,46 @@ class Tag(MethodView):
     def get(self,tag_id:int):
         tag = TagModel.query.get_or_404(tag_id)
         return tag
+    
+    @blp.response(202,description="Delete a tag if no item is linked to it",example={"message":"Tag deleted"})
+    @blp.alt_response(400,description="Tag is linked to an item",example={"message":"Tag is linked to an item"})
+    def delete(self,tag_id:int):
+        tag = TagModel.query.get_or_404(tag_id)
+        if not tag.items:
+            db.session.delete(tag)
+            db.session.commit()
+            return {"message":"Tag deleted"}
+        abort(400,message="Tag is linked to an item")
+
+@blp.route("item/<int:item_id>/tag/<string:tag_id")
+class LinkTagToItem(MethodView):
+    @blp.response(200,TagSchema)
+    def post(self,item_id,tag_id):
+        item = ItemModel.query.get_or_404(item_id)
+        tag = TagModel.query.get_or_404(tag_id)
+        
+        item.tags.append(tag)
+        try:
+            db.session.add(item)
+            db.session.commit()
+        except SQLAlchemyError:
+            abort(500,message = "An error occured while inserting the tag")
+    
+        return tag
+
+    @blp.response(200,TagAndItemSchema)
+    def delete(self,item_id,tag_id):
+        item = ItemModel.query.get_or_404(item_id)
+        tag = TagModel.query.get_or_404(tag_id)
+        
+        item.tabgs.remove(tag)
+        try:
+            db.session.add(item)
+            db.session.commit()
+        except SQLAlchemyError:
+            abort(500,message = "An error occured while inserting the tag")
+            
+        return {"message":"Tag removed from item","item":item,"tag":tag}
+    
+        
+    
